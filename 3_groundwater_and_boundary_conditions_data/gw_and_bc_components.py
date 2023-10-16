@@ -5,38 +5,35 @@
 __date__        = "September 2023"
 __author__      = "Nikola Ivanović"
 __email__       = "nikola.ivanovic@kaust.edu.sa"
-__institution__ = "King Abdullah University of Science and Technology, KSA"
+__institution__ = "King Abdullah University of Science and Technology (KAUST), SA"
 
 ##################################################################################################
-####################################### Headline #################################################
+######################################### Headline ###############################################
 ##################################################################################################
 
 """
 Aim:
 ---
-This script prepares soil and subsurface data for the DRYP 1.0 model. The script downloads,
-processes, and saves the data outputs.
+This script prepares groundwater and boundary conditions data for the DRYP 1.0 model. The script
+downloads, processes, and saves the data outputs.
+
 Input:
 -----
-1. Soil data (downloaded from ISRIC website).
+1. Aquifer saturated hydraulic conductivity (downloaded from GLHYMPS website).
+2. Water table depth (G³M 1.0 steady-state model output).
 
 Operations:
 ----------
 1. Download the data.
-2. Process the downloaded data and save the outputs.
+2. Process the downloaded data, and save the outputs.
 
 Outputs:
 -------
-1. Soil porosity (porosity)		                ->	    	      WCsat
-2. Theta residual			                    -> 	           	  WCres
-3. Available water content (AWC)  	            ->	              WCavail
-4. Wilting point (wp)		                   	->	    	      CRIT-WILT
-5. Soil depth (D)			                    -> 	   	          SOIL-DEPTH
-6. Soil particle distribution parameter (b)     ->	    	      N
-7. Soil suction head (psi)	                	->                Alfa & N
-8. Saturated hydraulic conductivity (Ksat)      -> 	   	          Ksat
-9. Sigma Ksat				                    ->	              std_Ksat
-10. Initial soil water content                  ->	              None
+1. Aquifer Saturated Hydraulic Conductivity (Ksat_aq)	->		Ksat_aq
+2. Specific Yield (Sy)									->		Sy
+3. Initial Conditions Water Table Elevation (WTE)		->		wte
+4. Flux Boundary Conditions (FBC)						->		None
+5. Head Boundary Conditions (HBC)						->		hbc
 """
 
 ##################################################################################################
@@ -55,18 +52,21 @@ try:
     from termcolor import colored
 except ImportError:
     print('Consider installing `termcolor` for colored outputs.')
+import tarfile
+import requests
 import subprocess
 from tqdm import tqdm
 import rasterio
 import numpy as np
+import pandas as pd
+import xarray as xr
 from affine import Affine
-from termcolor import colored
 from rasterio.mask import mask
 from shapely.geometry import box
+from scipy.ndimage import zoom
 from rasterio.warp import reproject, calculate_default_transform, Resampling
 from scipy.spatial import KDTree
 import matplotlib.pyplot as plt
-import xarray as xr
 
 ##################################################################################################
 # Define the functions:
@@ -77,10 +77,10 @@ Contents:
 --------
 1. Configuration function
 2. Timing functions
-3. Data download functions
+3. Data download function
 4. Cropping function
-5. Reprojection and resampling function
-6. Soil parameters functions
+5. Reprojection and resampling functions
+6. GW parameters functions
 7. Plotting function
 8. Saving functions
 """
@@ -115,7 +115,7 @@ class ConfigSingleton:
     # Define the class attribute to hold the single instance of this class:
     _instance = None
     # Define the function to load the configuration settings:
-    def __new__(cls, config_name="config_AP_proj"):
+    def __new__(cls, config_name="config_AP"):
 
         """
         This function is used to control the creation of a single instance of this
@@ -282,144 +282,72 @@ class script_timer:
 # Data download functions:
 # ------------------------------------------------------------------------------------------------
 
-# Define a function to download the file:
-def download_file(url, output_path):
+# Define a function to download and extract the file:
+def download_data(output_path):
 
     """
-    This function downloads a file from a given url.
+    This function downloads and unzips G³M 1.0 steady-state model output.
+
+    Parameters:
+    ----------
+    output_path : str
+        The path to the output directory.
     
-    Parameters:
-    ----------
-    url : str
-        The url of the file to be downloaded.
-    output_path : str
-        The path to the output directory.
-            
     Returns:
     -------
-    download_success : bool
-        The boolean value indicating whether the download was successful.
+    None
     """
 
-    # Downloading the zip file:
-    download_result = subprocess.run(f"wget -O {output_path} {url}", shell=True)
-    # Check if the download was successful:
-    if download_result.returncode != 0:
-        print(f"Download failed! Error: {download_result.stderr}")
-        return False
-    return True
+    # Get the URL settings:
+    url = config.url['wte']
 
-
-# Define a function to unzip the file:
-def unzip_file(zip_path, output_path, folder_name):
-
-    """
-    This function unzips a file.
-
-    Parameters:
-    ----------
-    zip_path : str
-        The path to the zip file.
-    output_path : str
-        The path to the output directory.
-    folder_name : str
-        The name of the folder to be created.
-
-    Returns:
-    -------
-    unzip_success : bool
-        The boolean value indicating whether the unzip was successful.
-    """
-
-    # Adjust the output_path to include the folder_name:
-    final_output_path = os.path.join(output_path, folder_name)
-    # Create the folder if it doesn't exist:
-    if not os.path.exists(final_output_path):
-        os.makedirs(final_output_path)
-    # Unzipping:
-    unzip_result = subprocess.run(f"unzip -o {zip_path} -d {final_output_path} >/dev/null 2>&1", shell=True)
-    # Check if the unzip was successful:
-    if unzip_result.returncode != 0:
-        print(f"Unzip failed! Error: {unzip_result.stderr}")
-        return False
-    return True
-
-
-# Defining a function to download soil data:
-def download_data(output_path, download_type='both'):
-    
-    """
-    This function downloads the soil data.
-
-    Parameters:
-    ----------
-    output_path : str
-        The path to the output directory.
-    download_type : str
-        'soil', 'depth', or 'both'. Determines the type of data to download.
-
-    Returns:
-    -------
-    None.
-    """
-
-
-    # Check if the output directory exists, if not, create it:
-    if not os.path.isdir(output_path):
-        os.makedirs(output_path)
-
-    # Downloading and unzipping soil data:
-    if download_type in ['soil', 'both']:
-        # Define the url for soil data:
-        urls = config.url['layers', 'top_subsoil']
-        # Loop through the urls:
-        for key, url in tqdm(urls.items()):
-            # Define the zip folder:
-            zip_folder = f"{key}.zip"
-            # Define the zip folder path:
-            zip_folder_path = os.path.join(output_path, zip_folder)
-            # Check if the zip folder exists:
-            if not os.path.exists(zip_folder_path):
-                # Downloading the file:
-                download_success = download_file(url, zip_folder_path)
-                # Check if the download was successful:
-                if not download_success:
-                    print(f"Skipping unzipping for {zip_folder} due to failed download.")
-                    continue
-            # Unzipping the file:
-            unzip_success = unzip_file(zip_folder_path, output_path, key)
-            # Check if the unzip was successful:
-            if unzip_success:
-                print(f"Unzipping {zip_folder} successful!")
-                # Remove the zip folder:
-                os.remove(zip_folder_path)
-
-    # Downloading and unzipping soil depth data:
-    if download_type in ['depth', 'both']:
-        # Define the url for soil depth:
-        url = config.url['soil_depth']
-        # Downloading soil depth data:
-        download_soil_depth = subprocess.run(f"wget -O {output_path}/SOIL-DEPTH_M_250m.tif {url}", shell=True)
-        # Check if the download was successful:
-        if download_soil_depth.returncode != 0:
-            print(f"Download failed! Error: {download_soil_depth.stderr}")
+    # Remove query parameters from the URL to clean the filename
+    clean_url = url.split('?')[0]
+    # Set the filename
+    filename = os.path.join(output_path, clean_url.rsplit('/', 1)[-1])
+    # Download the file if it doesn't exist
+    if not os.path.exists(filename):
+        try:
+            r = requests.get(url, stream=True)
+            r.raise_for_status()
+            total_size = int(r.headers.get('content-length', 0))
+            # Open the file to write the chunks and display the tqdm progress bar
+            with open(filename, 'wb') as f, tqdm(
+                desc=f"Downloading {filename}...",
+                total=total_size,
+                unit='B',
+                unit_scale=True,
+                unit_divisor=1024) as bar:
+                    for chunk in r.iter_content(chunk_size=8192*1000):
+                        size = f.write(chunk)
+                        bar.update(size)
+        # If the download fails, print the error:
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to download {url}. Error: {e}")
+    # Extract the tar.gz file and flatten the folder structure
+    if filename.endswith(".tar.gz"):
+        with tarfile.open(filename, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isreg():  # Skip if the TarInfo is not files
+                    member.name = os.path.basename(member.name)  # Remove folder names
+                    tar.extract(member, path=output_path)
+        # Remove the tar.gz file
+        os.remove(filename)
 
 # ------------------------------------------------------------------------------------------------
-# Cropping function:
+# Cropping functions:
 # ------------------------------------------------------------------------------------------------
 
 # Define a function to crop the data:
-def crop_data(data_path, parameter):
+def crop_data(labels):
 
     """
     Crop the raster to the extent of the research area.
 
     Parameters:
     ----------
-    data_path : str
-        Full path to the data file.
-    parameter : str
-        The parameter to crop.
+    labels : dict
+        Dictionary containing the labels of the data.
 
     Returns:
     -------
@@ -438,23 +366,21 @@ def crop_data(data_path, parameter):
                bounds['max_lon'], 
                bounds['max_lat'])
     # Crop the data:
-    with timer('Cropping the data...'):
+    with timer(f"Cropping the {labels['data_name']}..."):
         # Read the raster file:
-        with rasterio.open(data_path) as src:
+        with rasterio.open(labels['data_path']) as src:
             # Crop raster using bounding box:
             out_image, _ = mask(src, [bbox], crop=True)
             # Squeeze the data to 2D if it's 3D:
-            if out_image.ndim == 3:
+            if len(out_image.shape) == 3:
                 out_image = np.squeeze(out_image, axis=0)
             # Convert integer to float:
             out_image = out_image.astype(np.float32)
             # Replace no data with np.nan:
-            if parameter == 'SOIL-DEPTH':
-                out_image[out_image == -32768] = np.nan
-            else:
-                out_image[out_image == -9999] = np.nan
-            # Divide by 10000 to convert to correct values:
-            out_image /= 10000
+            out_image[out_image == 0] = np.nan
+            # Correct the values:
+            if labels['data_name'] == 'ksat_aq':
+                out_image = np.power(10, (out_image / 100)) * 1e+7
             # Manual construction of the transform matrix:
             min_lon, max_lon = bounds['min_lon'], bounds['max_lon']
             min_lat, max_lat = bounds['min_lat'], bounds['max_lat']
@@ -465,8 +391,8 @@ def crop_data(data_path, parameter):
             out_meta = src.meta.copy()
             out_meta.update({'height': out_image.shape[0], 
                              'width': out_image.shape[1], 
-                             'transform': transform, 
                              'dtype': out_image.dtype, 
+                             'transform': transform, 
                              'nodata': np.nan, 
                              'crs': src.crs})
         print(colored(' ✔ Done!', 'green'))
@@ -475,8 +401,66 @@ def crop_data(data_path, parameter):
     return out_image, out_meta
 
 # ------------------------------------------------------------------------------------------------
-# Reprojection and resampling function:
+# Reprojection and resampling functions:
 # ------------------------------------------------------------------------------------------------
+
+# Define a function to resample the data:
+def resample_data(data, metadata):
+
+    """
+    Resample the data to the resolution specified in the configuration file.
+
+    Parameters:
+    ----------
+    data : numpy array
+        The data to be resampled.
+    metadata : dict
+        Dictionary containing the metadata of the data.
+
+    Returns:
+    -------
+    resampled_data : numpy array
+        The resampled data.
+    resampled_metadata : dict
+        Dictionary containing the metadata of the resampled data.
+    """
+
+    # Get the output resolution settings:
+    resolution = config.resolution['wte']
+
+    # Resample the data:
+    with timer('Resampling the data...'):
+        # Get the bounds of the data:
+        bounds = {
+            'min_lon': metadata['transform'].c,
+            'max_lon': metadata['transform'].c + metadata['transform'].a * data.shape[1],
+            'min_lat': metadata['transform'].f + metadata['transform'].e * data.shape[0],
+            'max_lat': metadata['transform'].f}
+        # Calculate the output shape:
+        output_shape_y = int((bounds['max_lat'] - bounds['min_lat']) / resolution)
+        output_shape_x = int((bounds['max_lon'] - bounds['min_lon']) / resolution)
+        # Calculate the resampling factor:
+        factor_y = output_shape_y / data.shape[0]
+        factor_x = output_shape_x / data.shape[1]
+        # Resample the data (order=1 for bilinear interpolation):
+        resampled_data = zoom(data, (factor_y, factor_x), order=1)
+        print(colored(' ✔ Done!', 'green'))
+        # Updating the metadata:
+        original_transform = metadata['transform']
+        new_transform = Affine(resolution, 
+                               original_transform.b, 
+                               original_transform.c, 
+                               original_transform.d, 
+                               -resolution, 
+                               original_transform.f)
+        resampled_metadata = metadata.copy()
+        resampled_metadata.update({'height': resampled_data.shape[0], 
+                                   'width': resampled_data.shape[1], 
+                                   'transform': new_transform})
+        print(colored(' ✔ Done!', 'green'))
+
+    # Return the resampled data and metadata:
+    return resampled_data, resampled_metadata
 
 # Define a function to reporject and resample the data:
 def reproject_data(data, metadata):
@@ -550,8 +534,64 @@ def reproject_data(data, metadata):
     return resampled_data, resampled_metadata
 
 # ------------------------------------------------------------------------------------------------
-# Soil parameters functions:
+# GW parameters functions:
 # ------------------------------------------------------------------------------------------------
+
+# Define a function to create a WTE geotiff from a .csv file:
+def create_wte_tif(input_path, temp_path):
+
+    """
+    This function creates a WTE array from a .csv file, and saves it as a .tif file
+    in the temporary directory.
+
+    Parameters:
+    ----------
+    input_path : str
+        The path to the input directory.
+    temp_path : str
+        The path to the temporary directory.
+
+    Returns:
+    -------
+    None
+    """
+
+    # Get the intermediate step for plotting:
+    intermediate_step = config.intermediate_step['plot']
+
+    # Generate the global WTE dataset from a .csv file:
+    with timer('Generating the global water table elevation dataset...'):
+        # Read the .csv file:
+        wte_csv = pd.read_csv(os.path.join(input_path, 'water_table_depth.csv'))
+        # Create a 2D array from the .csv file:
+        wte_array = wte_csv.pivot(index='Y', columns='X', values='WTD(m)').values[::-1].astype('float32')
+        # Manually calculate the extent:
+        min_x, max_x = wte_csv['X'].min(), wte_csv['X'].max()
+        min_y, max_y = wte_csv['Y'].min(), wte_csv['Y'].max()
+        res_lon = (max_x - min_x) / wte_array.shape[1]
+        res_lat = (min_y - max_y) / wte_array.shape[0]
+        # Calculate the transform matrix:
+        transform = Affine.translation(min_x, max_y) * Affine.scale(res_lon, res_lat)
+        # Create the metadata:
+        wte_metadata = {'height': wte_array.shape[0], 
+                        'width': wte_array.shape[1], 
+                        'dtype': wte_array.dtype, 
+                        'transform': transform, 
+                        'crs': 'EPSG:4326', 
+                        'nodata': np.nan}
+        print(colored(' ✔ Done!', 'green'))
+    # Resample the data:
+    resampled_wte_array, resampled_wte_metadata = resample_data(wte_array, wte_metadata)
+    # Save the data:
+    save_data(resampled_wte_array, resampled_wte_metadata, temp_path, 
+              format= 'GTiff', data_name='wte_global')
+    # Plot the data:
+    if intermediate_step:
+        plot_data(resampled_wte_array, resampled_wte_metadata, temp_path, 
+                  data_name='wte_global', title='Water Table Elevation', 
+                  cbar_label=r'Water table [m]', cmap='plasma')
+    print(colored('==========================================================================================', 'blue'))
+
 
 # Define a function to adjust the data range:
 def parameter_range(data):
@@ -566,12 +606,12 @@ def parameter_range(data):
     Parameters:
     ----------
     data : numpy array
-        The data array to be adjusted.
+        The data array.
 
     Returns:
     -------
     data : numpy array
-        The adjusted data array.
+        The capped data array.
     """
     
     # Calculate the 5th and 95th percentiles of the data:
@@ -594,14 +634,14 @@ def fill_all_nans(data, k=3):
     Parameters:
     ----------
     data : numpy array
-        The data array to be filled.
+        The data array.
     k : int
         The number of nearest neighbors to use for filling in the NaNs.
 
     Returns:
     -------
     filled_array : numpy array
-        The filled data array.
+        The filled array.
     """
 
     # Create a copy of the original array:
@@ -625,36 +665,23 @@ def fill_all_nans(data, k=3):
 
 
 # Define a function to process the data:
-def process_data(parameter, input_path, temp_path, output_path, 
-                 data_name, title, cbar_label, cmap, save=True):
+def generic_process(labels, temp_path, output_path):
 
     """
-    This function processes the data by cropping, resampling, and saving the data.
+    This function processes the data.
 
     Parameters:
     ----------
-    parameter : str
-        The parameter to process.
-    input_path : str
-        The path to the input directory.
+    labels : dict
+        A dictionary containing labels of the data.
     temp_path : str
         The path to the temporary directory.
     output_path : str
         The path to the output directory.
-    data_name : str
-        Name of the data to be processed.
-    title : str
-        The title of the data.
-    cbar_label : str
-        The colorbar label of the data.
-    cmap : str
-        The colormap of the data.
-    save : bool
-        Whether to save the data or not. Default is True.
 
     Returns:
     -------
-    res_crop_data : numpy array
+    res_crop_data : xarray DataArray
         The cropped and resampled data.
     res_crop_metadata : dict
         The metadata of the resampled cropped data.
@@ -662,19 +689,10 @@ def process_data(parameter, input_path, temp_path, output_path,
 
     # Get the intermediate step for plotting:
     intermediate_step = config.intermediate_step['plot']
-    
-    # Construct the file path:
-    if parameter == 'SOIL-DEPTH':
-        data_path = os.path.join(input_path, f"{parameter}_M_250m.tif")
-    else:
-        data_path = os.path.join(input_path, 'top_subsoil', parameter, 
-                                 f"{parameter}_M_250m_TOPSOIL.tif")
-    # If the parameter is 'ALFA', or 'N', don't save the data output:
-    if parameter == 'ALFA' or parameter == 'N':
-        save = False
+
     # Crop the dataset:
-    crop_dataset, crop_metadata = crop_data(data_path, parameter)
-    # Reproject and resample the data:
+    crop_dataset, crop_metadata = crop_data(labels)
+    # Reproject and resample the dataset:
     res_crop_data, res_crop_metadata = reproject_data(crop_dataset, crop_metadata)
     # Correct the data range to remove outliers, and division by zero:
     with timer('Correcting the data range...'):
@@ -685,41 +703,35 @@ def process_data(parameter, input_path, temp_path, output_path,
         res_crop_data = fill_all_nans(res_crop_data)
         print(colored(' ✔ Done!', 'green'))
     # Correct the units of the following parameters:
-    if parameter == 'ALFA':
-        res_crop_data = res_crop_data / 10                  # [cm^-1] to [mm^-1]
-    elif parameter == 'Ksat':
-        res_crop_data = res_crop_data * 10 / 24             # [cm d^-1] to [mm h^-1]
-    elif parameter == 'SOIL-DEPTH':
-        res_crop_data = res_crop_data * 1000                # [m] to [mm]
+    if labels['data_name'] == 'ksat_aq':
+        res_crop_data = res_crop_data * 60 * 60     # for [m/s] to [m/h]
     # Save the resampled data:
-    if save:
+    if labels['save']:
         save_data(res_crop_data, res_crop_metadata, output_path, 
-                  data_name=f"resampled_{data_name}")
+                  data_name=labels['data_name'])
     # Plot the resampled data:
     if intermediate_step:
         plot_data(res_crop_data, res_crop_metadata, temp_path,
-                  data_name=f"resampled_{data_name}", title=f"Resampled {title}",
-                  cbar_label=cbar_label, cmap=cmap)
-    # Print a message:
-    print(f"{colored(parameter, 'blue', attrs=['bold', 'underline'])}", colored('is processed!', 'green')) 
+                  data_name=labels['data_name'], title=labels['title'], 
+                  cbar_label=labels['cbar_label'], cmap=labels['cmap'])
     print(colored('==========================================================================================', 'blue'))
 
-    # Return the dictionary parameters:
-    return {'parameter': parameter, 'data': res_crop_data, 'metadata': res_crop_metadata}
+    # Return the resampled data and metadata:
+    return res_crop_data, res_crop_metadata
 
 
-# Define a function to calculate the soil particle distribution parameter (b):
-def calculate_b(n, metadata, temp_path, output_path):
-        
+# Define a function to process the groundwater data:
+def process_data(input_path_ksat_aq, input_path_wte, temp_path, output_path):
+
     """
-    This function calculates the soil particle distribution parameter (b).
+    This function processes the groundwater data.
 
     Parameters:
     ----------
-    n : numpy array
-        The soil pore size distribution parameter (n).
-    metadata : dict
-        The dictionary of metadata.
+    input_path_ksat_aq : str
+        The path to the input directory for the aquifer saturated hydraulic conductivity data.
+    input_path_wte : str
+        The path to the input directory for the water table elevation data.
     temp_path : str
         The path to the temporary directory.
     output_path : str
@@ -727,163 +739,44 @@ def calculate_b(n, metadata, temp_path, output_path):
 
     Returns:
     -------
-    b : numpy array
-        The soil particle distribution parameter (b).
+    res_crop_ksat_aq : numpy array
+        The cropped and resampled aquifer saturated hydraulic conductivity data.
+    res_crop_wte : numpy array
+        The cropped and resampled water table elevation data.
     """
 
-    # Calculate parameter b:
-    with timer('Calculating b parameter...'):
-        # Calculate:
-        b = 1 / (n - 1)
-        print(colored(' ✔ Done!', 'green'))
-    # Save the data:
-    save_data(b, metadata, output_path, 
-                data_name='parameter_b')                  
-    # Plot the data:
-    plot_data(b, metadata, temp_path,
-                data_name='parameter_b', title='Parameter (b)',
-                cbar_label='Soil Particle Distribution []', cmap='viridis')
-    print(colored('==========================================================================================', 'blue'))
+    # Create WTE geotiff from a .csv file:
+    create_wte_tif(input_path_wte, temp_path)
+    # Define the data labels:
+    labels_ksat_aq = {
+        'data_path': os.path.join(input_path_ksat_aq, 'GLHYMPS_V2_logK_Ferr_raster_0p025.tif'),
+        'data_name': 'ksat_aq',
+        'title': 'Aquifer Saturated Hydraulic Conductivity',
+        'cbar_label': r'Hydraulic Conductivity [m h$^{-1}$]',
+        'cmap': 'plasma',
+        'save': True}
+    labels_wte = {
+        'data_path': os.path.join(temp_path, 'wte_global.tif'),
+        'data_name': 'wte',
+        'title': 'Water Table Elevation',
+        'cbar_label': 'Water table [m]',
+        'cmap': 'plasma',
+        'save': True}
+    # Process the aquifer saturated hydraulic conductivity and water table elevation data:
+    res_crop_ksat_aq, _ = generic_process(labels_ksat_aq, temp_path, output_path)
+    res_crop_wte, _ = generic_process(labels_wte, temp_path, output_path) 
+
+    # Return resampled and cropped data and metadata:
+    return res_crop_ksat_aq, res_crop_wte
+
+
+# Define a function to calculate the specific yield (Sy):
+def calculate_sy(input_path, temp_path, output_path):
+
+    """
+    This function roughly estimates the specific yield (Sy), based on the soil porosity (WCsat), 
+    and the available water content (WCavail).
     
-    # Return soil particle distribution parameter (b):
-    return b
-
-
-# Define a function to calculate the soil suction head parameter (psi):
-def calculate_psi(alfa, n, theta_s, theta, metadata, temp_path, output_path):
-            
-    """
-    This function calculates the soil suction head parameter (psi).
-
-    Parameters:
-    ----------
-    alfa : numpy array
-        The soil pore size distribution parameter (alfa).
-    n : numpy array
-        The soil pore size distribution parameter (n).
-    theta_s : numpy array
-        The saturated water content (WCsat).
-    theta : numpy array
-        The current water content (WCavail).
-    metadata : dict
-        The dictionary of metadata.
-    temp_path : str
-        The path to the temporary directory.
-    output_path : str
-        The path to the output directory.
-
-    Returns:
-    -------
-    psi : numpy array
-        The soil suction head parameter (psi).
-    """
-
-    # Calculate parameter psi:
-    with timer('Calculating psi parameter...'):
-        # Calculate:
-        psi = (1 / alfa) * (((theta_s / theta) ** ((n - 1) / n)) - 1) ** (1 / n)
-        print(colored(' ✔ Done!', 'green'))
-    # Save the data:
-    save_data(psi, metadata, output_path,
-              data_name='parameter_psi')
-    # Plot the data:
-    plot_data(psi, metadata, temp_path,
-              data_name='parameter_psi', title='Parameter (psi)', 
-              cbar_label='Soil Suction Head [mm]', cmap='viridis')
-    print(colored('==========================================================================================', 'blue'))
-    
-    # Return soil suction head parameter (psi):
-    return psi
-
-
-# Define a function to calculate sigma Ksat:
-def calculate_sigma_ksat(ksat, metadata, temp_path, output_path):
-    
-    """
-    This function creates an ones array as the sigma Ksat.
-
-    Parameters:
-    ----------
-    ksat : numpy array
-        The saturated hydraulic conductivity (Ksat).
-    metadata : dict
-        The dictionary of metadata.
-    temp_path : str
-        The path to the temporary directory.
-    output_path : str
-        The path to the output directory.
-
-    Returns:
-    -------
-    sigma_ksat : numpy array
-        The standard deviation of Ksat.
-    """
-
-    # Calculate sigma Ksat:
-    with timer('Calculating sigma Ksat...'):
-        # Calculate:
-        sigma_ksat_value = np.nanstd(ksat)
-        # Create an array of the same shape as Ksat, and fill it with the std. dev. of Ksat:
-        sigma_ksat = (np.ones(ksat.shape) * sigma_ksat_value).astype(np.float32)
-        print(colored(' ✔ Done!', 'green'))
-    # Save the data:
-    save_data(sigma_ksat, metadata, output_path, 
-                data_name='sigma_ksat')
-    print(colored('==========================================================================================', 'blue'))
-
-    # Return the standard deviation of Ksat:
-    return sigma_ksat
-
-
-# Define a function to summarize the results:
-def summarize_results(results):
-
-    """
-    This function prints out the NaN count, maximum value, mean value, minimum value, and 
-    Inf count for each parameter in the results.
-
-    Parameters:
-    ----------
-    results : dict
-        The dictionary of soil data processing results.
-    
-    Returns:
-    -------
-    None.
-    """
-
-    # Print the header of the table:
-    print(f"{'Parameter':<15}{'NaN':<10}{'Max':<10}{'Mean':<10}{'Min':<10}{'Inf':<10}")
-    # Loop through the parameters in results:
-    for key in results.keys():
-        if 'data' in results[key]:
-            # Check if the data is a numeric numpy array:
-            if isinstance(results[key]['data'], np.ndarray) and np.issubdtype(results[key]['data'].dtype, np.number):
-                # Compute the NaN count, maximum value, mean value, minimum value, and Inf count:
-                nan_count = f"{np.count_nonzero(np.isnan(results[key]['data']))}"
-                max_value = f"{np.nanmax(results[key]['data']):.3f}"
-                mean_value = f"{np.nanmean(results[key]['data']):.3f}"
-                min_value = f"{np.nanmin(results[key]['data']):.3f}"
-                inf_count = f"{np.count_nonzero(np.isinf(results[key]['data']))}"
-                # Print the results in a row following column positions:
-                print(f"{key:<15}{nan_count:<10}{max_value:<10}{mean_value:<10}{min_value:<10}{inf_count:<10}")
-                # Save the computed values back to results
-                results[key].update({
-                    'nan_count': nan_count, 
-                    'max_value': max_value,
-                    'mean_value': mean_value,
-                    'min_value': min_value,
-                    'inf_count': inf_count})
-            else:
-                print(f"{key}:", colored(' data is not a numeric NumPy array!', 'red'))
-
-
-# Define a function to create a dictionary of soil data processing results:
-def results(input_path, temp_path, output_path):
-
-    """
-    This function creates a dictionary of soil data processing results.
-
     Parameters:
     ----------
     input_path : str
@@ -892,65 +785,54 @@ def results(input_path, temp_path, output_path):
         The path to the temporary directory.
     output_path : str
         The path to the output directory.
-
+        
     Returns:
     -------
-    results : dict
-        The dictionary of soil data processing results.
+    sy : numpy array
+        Roughly estimated specific yield (Sy).
     """
 
-    # Define the data parameters:
-    parameters = ['ALFA', 'CRIT-WILT', 'Ksat', 'N', 'WCavail', 'WCres', 'WCsat', 'SOIL-DEPTH']
-    # Define the data names:
-    data_names = ['alfa', 'crit_wilt', 'ksat', 'n', 'wc_avail', 'wc_res', 'wc_sat', 'soil_depth']
-    # Define the data titles:
-    titles = ['Alfa Parameter',   
-              'Wilting Point', 
-              'Saturated Hydraulic Conductivity', 
-              'N Parameter', 
-              'Available Water Content', 
-              'Residual Water Content', 
-              'Saturater Water Content',
-              'Soil Depth']
-    # Define the data colorbar labels:
-    cbar_labels = [r'Alfa Parameter of the van Genuchten model [mm$^{-1}$]', 
-                   r'Wilting point [m$^3$ m$^{-3}$]', 
-                   r'Saturated hydraulic conductivity [mm h$^{-1}$]', 
-                   r'N Parameter of the van Genuchten model []', 
-                   r'Available water content [m$^3$ m$^{-3}$]', 
-                   r'Residual Water Content [m$^3$ m$^{-3}$]', 
-                   r'Saturater Water Content [m$^3$ m$^{-3}$]',
-                   r'Soil Depth [mm]']
-    # Define the data colormaps:
-    cmaps = ['viridis', 'viridis', 'viridis', 'viridis', 'viridis', 'viridis', 'viridis', 'viridis']
-    # Create a dictionary to store the results:
-    results = {}
-    # Loop through the parameters:
-    for parameter, data_name, title, cbar_label, cmap in zip(parameters, data_names, titles, cbar_labels, cmaps):
-        # Process the data:
-        result = process_data(parameter, input_path, temp_path, output_path, 
-                              data_name, title, cbar_label, cmap)
-        # Save the parameter and its corresponding data in the results dictionary:
-        results[result['parameter']] = {'data': result['data'], 
-                                        'metadata': result['metadata']}
-    # Calculate parameter b:
-    b = calculate_b(results['N']['data'], results['N']['metadata'], temp_path, output_path)
-    # Calculate parameter psi:
-    psi = calculate_psi(results['ALFA']['data'], results['N']['data'], results['WCsat']['data'], 
-                        results['WCavail']['data'], results['N']['metadata'], temp_path, output_path)
-    # Calculate the standard deviation of Ksat:
-    sigma_Ksat = calculate_sigma_ksat(results['Ksat']['data'], results['Ksat']['metadata'], temp_path, output_path)
-    # Save the b parameter and its corresponding data in the results dictionary:
-    results['b'] = {'data': b, 'metadata': results['N']['metadata']}
-    # Save the psi parameter and its corresponding data in the results dictionary:
-    results['psi'] = {'data': psi, 'metadata': results['N']['metadata']}
-    # Save the sigma_Ksat parameter and its corresponding data in the results dictionary:
-    results['sigma_Ksat'] = {'data': sigma_Ksat, 'metadata': results['Ksat']['metadata']}
-    # Summarize the results:
-    summarize_results(results)
+    # Get the resolution settings:
+    resolution = config.resolution['output']
+    # Get the intermediate step settings:
+    intermediate_step = config.intermediate_step['plot']
 
-    # Return the results dictionary:
-    return results
+    # Calculate the specific yield (Sy):
+    with timer('Calculating the specific yield (Sy)...'):
+        # Load the WCsat and WCavail NetCDF files:
+        wc_sat_ds = xr.open_dataset(os.path.join(input_path, 'resampled_wc_sat.nc'))
+        wc_avail_ds = xr.open_dataset(os.path.join(input_path, 'resampled_wc_avail.nc'))
+        # Convert xarray DataArrays to numpy arrays:
+        wc_sat_np = wc_sat_ds['resampled_wc_sat'].values
+        wc_avail_np = wc_avail_ds['resampled_wc_avail'].values
+        # Perform calculation:
+        sy = np.minimum(wc_sat_np, wc_avail_np)
+        # Extract coordinates and crs:
+        y_max = wc_sat_ds.y.max().values
+        x_min = wc_sat_ds.x.min().values
+        crs = wc_sat_ds.crs
+        # Generate transform matrix:
+        transform = [resolution, 0, float(x_min), 0, -resolution, float(y_max)]
+        # Create metadata:
+        metadata = {'transform': transform, 
+                    'height': sy.shape[0], 
+                    'width': sy.shape[1], 
+                    'dtype': sy.dtype, 
+                    'nodata': np.nan,
+                    'crs': crs}
+        print(colored(' ✔ Done!', 'green'))
+    # Save the data:
+    save_data(sy, metadata, output_path,
+              data_name='sy')
+    # Plot the data:
+    if intermediate_step:
+        plot_data(sy, metadata, temp_path,
+                  data_name='sy', title='Specific Yield', 
+                  cbar_label=r'Specific Yield [m$^{3}$ m$^{-3}$]', cmap='plasma')
+    print(colored('==========================================================================================', 'blue'))
+    
+    # Return the specific yield (Sy):
+    return sy
 
 # ------------------------------------------------------------------------------------------------
 # Plotting function:
@@ -1136,7 +1018,9 @@ runtime = script_timer()
 ##################################################################################################
 
 # Get the directories:
-input_dir = config.dir['input']
+input_dir_ksat_aq = config.dir['input_ksat_aq']
+input_dir_wte = config.dir['input_wte']
+input_dir_sy = config.dir['input_sy']
 output_dir = config.dir['output']
 temp_dir = config.dir['temp']
 
@@ -1144,15 +1028,19 @@ temp_dir = config.dir['temp']
 # Download the data:
 ##################################################################################################
 
-# Download and unzip the data (if not already downloaded):
-# download_data(input_dir)
+# Download the GLHYMPS data manually.
+# Download the G³M 1.0 data:
+# download_data(input_dir_wte)
 
 ##################################################################################################
 # Process the data and save the outputs:
 ##################################################################################################
 
-# Process the data:
-output = results(input_dir, temp_dir, output_dir)
+# Calculate the parameters:
+res_crop_ksat_aq, res_crop_wte = process_data(input_dir_ksat_aq, input_dir_wte,  
+                                              temp_dir, output_dir)
+# Calculate the specific yield (Sy):
+# sy = calculate_sy(input_dir_sy, temp_dir, output_dir)
 
 ##################################################################################################
 # Remove temporary files:

@@ -126,7 +126,7 @@ class ConfigSingleton:
     # Define the class attribute to hold the single instance of this class:
     _instance = None
     # Define the function to load the configuration settings:
-    def __new__(cls, config_name="config_AP_proj"):
+    def __new__(cls, config_name="config_AP"):
 
         """
         This function is used to control the creation of a single instance of this
