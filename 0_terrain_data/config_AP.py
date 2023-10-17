@@ -24,8 +24,8 @@ auth = {
 # Define directories:
 dir = {
     'input_dem': '/home/ivanovn/ws_local/download/MERIT/DEM',
-    'input_upstream': '/home/ivanovn/ws_local/downloadP/MERIT/UPSTREAM',
-    'output': '/home/ivanovn/ws_local/projects/ffews/data_processing_DRYP/out'}
+    'input_upstream': '/home/ivanovn/ws_local/download/MERIT/UPSTREAM',
+    'output': '/home/ivanovn/ws_local/temp/DRYP_input'}
 dir['temp'] = os.path.join(dir['output'], 'temp')
 # Check if the temp directory exists, if not, create it:
 if not os.path.isdir(dir['temp']):
@@ -37,6 +37,13 @@ bounds = {
     'max_lon': 59,          # 1 degree less to avoid adding the next tile
     'min_lat': 10, 
     'max_lat': 35}
+
+# Define the terrain mask polygon bounds:
+polygon = {
+    'bounds': [(32.5, 30), (32, 32), (34, 32), (34.5, 33.5), (35, 35), (35, 36), (36.5, 37), (40, 37.5), 
+               (42.5, 37.5), (45, 37), (47, 35.5), (49, 33), (50, 31), (50, 29), (51, 28), (53, 26.5), 
+               (54.5, 26), (56, 26.5), (56.5, 26.5), (57.5, 25), (59, 24.5), (61, 23), (61, 22), (59, 19), 
+               (57, 17), (50.5, 13.5), (44, 11.5), (43.5, 12.5), (42, 14), (34.5, 27.5), (33.5, 28), (32.5, 29.5)]}
 
 # Define the flow direction method:
 dirmap = {

@@ -71,6 +71,8 @@ from rasterio.merge import merge
 from rasterio.warp import reproject, calculate_default_transform, Resampling
 from landlab import RasterModelGrid
 from landlab.components import FlowAccumulator
+from shapely.geometry import Polygon
+from rasterio.features import geometry_mask
 from matplotlib import colors
 from rasterio.plot import show
 from collections import Counter
@@ -672,10 +674,9 @@ def generic_reproject(data, metadata, labels, temp_path, output_path):
         # Determine the resampling method:
         resample_method = Resampling.max if labels['method'] == 'max' else Resampling.bilinear
         # Calculate the new dimensions and affine transform for the target CRS and resolution:
-        transform, width, height = calculate_default_transform(
-            metadata['crs'], crs, 
-            data.shape[1], data.shape[0], *bounds, 
-            resolution=(resolution, resolution))
+        transform, width, height = calculate_default_transform(metadata['crs'], crs, 
+                                                               data.shape[1], data.shape[0], *bounds, 
+                                                               resolution=(resolution, resolution))
         # Create an empty array for the reprojected and resampled data:
         resampled_data = np.empty((height, width), dtype=np.float32)
         # Reproject the data:
@@ -711,7 +712,8 @@ def generic_reproject(data, metadata, labels, temp_path, output_path):
                   data_name=labels['data_name'], title=labels['title'], 
                   cbar_label=labels['cbar_label'], cmap=labels['cmap'], 
                   log_scale=labels['log_scale'], 
-                  inverse=labels['inverse'])
+                  inverse=labels['inverse'], 
+                  binary=labels['binary'])
     print(colored('==========================================================================================', 'blue'))
 
     # Return the reprojection and resampled data and its metadata:
@@ -758,6 +760,7 @@ def resample_data(merged_dem, merged_upstream, metadata,
         'cmap': 'terrain',
         'log_scale': False,
         'inverse': False,
+        'binary': False, 
         'save': True}
     labels_ups = {
         'method': 'max', 
@@ -767,6 +770,7 @@ def resample_data(merged_dem, merged_upstream, metadata,
         'cmap': 'cubehelix',
         'log_scale': False,
         'inverse': True,
+        'binary': False, 
         'save': False}
     # Resample the merged DEM and UPSTREAM data:
     resampled_merged_dem, resampled_merged_dem_metadata = generic_reproject(
@@ -1026,18 +1030,18 @@ def boundary_conditions(river_network, res_merged_dem, res_metadata, temp_path, 
 
 
 # Define a function to create research area terrain mask:
-def terrain_mask(res_merged_dem, res_metadata, temp_path, output_path):
+def terrain_mask(merged_dem, metadata, temp_path, output_path):
 
     """
-    Create a terrain mask to differentiate land mass (elevation >= 0) 
-    from the sea (elevation <= 0).
+    Create a terrain mask to differentiate land mass (elevation >= 0) from the sea (elevation <= 0), and
+    to limit the research area to the specified bounds in the configuration file.
 
     Parameters:
     ----------
-    res_merged_dem : numpy array
-        The resampled merged DEM data.
-    res_metadata : dict
-        Dictionary containing the metadata of the resampled data.
+    merged_dem : numpy array
+        The merged DEM data.
+    metadata : dict
+        Dictionary containing the metadata of the data.
     temp_path : str
         The path to the temporary directory.
     output_path : str
@@ -1049,21 +1053,35 @@ def terrain_mask(res_merged_dem, res_metadata, temp_path, output_path):
         Terrain mask with 1s for land, and 0s for sea.
     """
 
-    # Get the intermediate step settings:
-    intermediate_step = config.intermediate_step['plot']
+    # Get the terrain mask polygon bounds:
+    polygon = config.polygon['bounds']
 
-    # Create a mask with 1s for land, and 0s for sea:
+    # Create a research area mask:
     with timer('Creating a terrain mask...'):
-        terrain_mask = np.where(res_merged_dem > 0, 1, 0).astype(np.int32)
+        # Define the data labels:
+        labels = {
+            'method': 'mean',
+            'data_name': 'terrain_mask',
+            'title': 'Terrain mask',
+            'cbar_label': 'Terrain shape',
+            'cmap': 'binary',
+            'log_scale': False,
+            'inverse': False,
+            'binary': True,
+            'save': True}
+        # Divide the land mass from the sea (elevation >= 0):
+        dem_mask = np.where(merged_dem > 0, 1, 0).astype(np.int32)
+        # Create a polygon from the bounds:
+        bounds = Polygon(polygon)
+        # Create a mask from the polygon:
+        mask = geometry_mask([bounds], out_shape=dem_mask.shape, transform=metadata['transform'], invert=True)
+        # Apply the mask:
+        dem_mask = np.where(mask == 1, dem_mask, 0)
+        # Resample the terrain mask:
+        terrain_mask, _ = generic_reproject(dem_mask, metadata, labels, temp_path, output_path)
+        # Convert the reprojected resampled terrain mask values to 1s and 0s:
+        terrain_mask = np.where(terrain_mask > 0, 1, 0).astype(np.int32)
         print(colored(' ✔ Done!', 'green'))
-    # Save the resampled data:
-    save_data(terrain_mask, res_metadata, output_path, 
-              data_name='terrain_mask')
-    # Plot the resampled data:
-    if intermediate_step:
-        plot_data(terrain_mask, res_metadata, temp_path, 
-                  data_name='terrain_mask', title='Terrain mask',
-                  cbar_label='Terrain shape', cmap='binary', binary=True)
     print(colored('==========================================================================================', 'blue'))
 
     # Return the terrain mask:
@@ -1217,7 +1235,7 @@ def plot_data_tiles(data_tiles, temp_path, data_type):
 # Define a function to plot the output data:
 def plot_data(data, metadata, temp_path,
               data_name=None, title=None, cbar_label=None, cmap=None, 
-              log_scale=False, inverse=False, binary=False):
+              wgs=False, log_scale=False, inverse=False, binary=False):
     
     """
     Plots the output data with a colorbar, prints the information, 
@@ -1239,6 +1257,8 @@ def plot_data(data, metadata, temp_path,
         The label for the colorbar.
     cmap : str
         The colormap to be used for the plot.
+    wgs : bool
+        Whether to use labels for WGS84 coordinate reference system. Default is False.
     log_scale : bool
         Whether to use a logarithmic scale for the colorbar. Default is False.
     inverse : bool
@@ -1272,8 +1292,12 @@ def plot_data(data, metadata, temp_path,
             im = ax.imshow(data, cmap=cmap, extent=extent, zorder=1)
         # Set the title, labels, tick parameters, and grid:
         ax.set_title(title, fontsize=20, fontweight='bold', pad=20)
-        ax.set_xlabel('Longitude [m]', fontsize=16, labelpad=10)
-        ax.set_ylabel('Latitude [m]', fontsize=16, labelpad=10)
+        if wgs:
+            ax.set_xlabel('Longitude [°]', fontsize=16, labelpad=10)
+            ax.set_ylabel('Latitude [°]', fontsize=16, labelpad=10)
+        else:
+            ax.set_xlabel('Longitude [m]', fontsize=16, labelpad=10)
+            ax.set_ylabel('Latitude [m]', fontsize=16, labelpad=10)
         ax.tick_params(axis='both', which='major', labelsize=12)
         ax.grid(True, color='lightgray', linestyle='--', linewidth=0.5)
         # Set the colorbar:
@@ -1467,7 +1491,7 @@ riv_net = river_network(flow_acc, cell_area, res_metadata, temp_dir)
 # Compute constant head boundary conditions (CHB):
 chb = boundary_conditions(riv_net, res_merged_dem, res_metadata, temp_dir, output_dir)
 # Create research area terrain mask:
-terr_mask = terrain_mask(res_merged_dem, res_metadata, temp_dir, output_dir)
+terr_mask = terrain_mask(merged_dem, metadata, temp_dir, output_dir)
 # Compute river lengths:
 riv_len = river_lengths(riv_net, res_metadata, temp_dir, output_dir)
  
