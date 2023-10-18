@@ -1,0 +1,13 @@
+# The list of python modules used in the terrain data preparation:
+tqdm
+numpy
+scipy
+affine
+xarray
+landlab
+shapely
+rasterio
+requests
+termcolor
+matplotlib
+beautifulsoup4
