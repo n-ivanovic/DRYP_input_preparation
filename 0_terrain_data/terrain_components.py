@@ -569,7 +569,7 @@ def generic_merge(tiles, labels, temp_path):
         plot_data(mosaic, metadata, temp_path, 
                   data_name=labels['data_name'], title=labels['title'], 
                   cbar_label=labels['cbar_label'], cmap=labels['cmap'], 
-                  log_scale=labels['log_scale'])
+                  wgs=labels['wgs'], log_scale=labels['log_scale'])
     # Close the tiles:
     for tile in tiles_to_mosaic:
         tile.close()
@@ -611,12 +611,14 @@ def merge_data(dem_tiles, ups_tiles, temp_path):
         'title': 'Merged DEM',
         'cbar_label': 'Elevation [m]',
         'cmap': 'terrain',
+        'wgs': True, 
         'log_scale': False}
     labels_ups = {
         'data_name': 'merged_ups',
         'title': 'Merged upstream area',
         'cbar_label': 'Upstream cells',
         'cmap': 'cubehelix',
+        'wgs': True, 
         'log_scale': True}
     # Merge the DEM and upstream tiles:
     merged_dem, metadata_dem = generic_merge(dem_tiles, labels_dem, temp_path)
@@ -711,9 +713,7 @@ def generic_reproject(data, metadata, labels, temp_path, output_path):
         plot_data(resampled_data, resampled_metadata, temp_path, 
                   data_name=labels['data_name'], title=labels['title'], 
                   cbar_label=labels['cbar_label'], cmap=labels['cmap'], 
-                  log_scale=labels['log_scale'], 
-                  inverse=labels['inverse'], 
-                  binary=labels['binary'])
+                  log_scale=labels['log_scale'], inverse=labels['inverse'], binary=labels['binary'])
     print(colored('==========================================================================================', 'blue'))
 
     # Return the reprojection and resampled data and its metadata:
