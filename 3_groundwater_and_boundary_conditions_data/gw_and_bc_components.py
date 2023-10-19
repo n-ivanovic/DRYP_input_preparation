@@ -589,7 +589,8 @@ def create_wte_tif(input_path, temp_path):
     if intermediate_step:
         plot_data(resampled_wte_array, resampled_wte_metadata, temp_path, 
                   data_name='wte_global', title='Water Table Elevation', 
-                  cbar_label=r'Water table [m]', cmap='plasma')
+                  cbar_label=r'Water table [m]', cmap='plasma', 
+                  wgs=True)
     print(colored('==========================================================================================', 'blue'))
 
 
@@ -840,7 +841,8 @@ def calculate_sy(input_path, temp_path, output_path):
 
 # Define a function to plot the output data:
 def plot_data(data, metadata, temp_path, 
-              data_name=None, title=None, cbar_label=None, cmap=None):
+              data_name=None, title=None, cbar_label=None, cmap=None,
+              wgs=False):
     
     """
     Plots the output data with a colorbar, prints the information, 
@@ -862,6 +864,8 @@ def plot_data(data, metadata, temp_path,
         The label for the colorbar.
     cmap : str
         The colormap to be used for the plot.
+    wgs : bool
+        Whether the data is in WGS84 or not.
     
     Returns:
     -------
@@ -880,8 +884,12 @@ def plot_data(data, metadata, temp_path,
         im = ax.imshow(data, cmap=cmap, extent=extent)
         # Set the title, labels, tick parameters, and grid:
         ax.set_title(title, fontsize=20, fontweight='bold', pad=20)
-        ax.set_xlabel('Longitude [m]', fontsize=16, labelpad=10)
-        ax.set_ylabel('Latitude [m]', fontsize=16, labelpad=10)
+        if wgs:
+            ax.set_xlabel('Longitude [°]', fontsize=16, labelpad=10)
+            ax.set_ylabel('Latitude [°]', fontsize=16, labelpad=10)
+        else:
+            ax.set_xlabel('Longitude [m]', fontsize=16, labelpad=10)
+            ax.set_ylabel('Latitude [m]', fontsize=16, labelpad=10)
         ax.tick_params(axis='both', which='major', labelsize=12)
         ax.grid(True, color='lightgray', linestyle='--', linewidth=0.5)
         # Set the colorbar:
