@@ -5,6 +5,7 @@
 __date__        = "August 2023"
 __author__      = "Nikola Ivanović"
 __email__       = "nikola.ivanovic@kaust.edu.sa"
+__department__  = "Earth Science and Engineering"
 __institution__ = "King Abdullah University of Science and Technology, KSA"
 
 ##################################################################################################
