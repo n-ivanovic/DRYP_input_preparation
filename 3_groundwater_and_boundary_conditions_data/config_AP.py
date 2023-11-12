@@ -13,7 +13,7 @@ import os
 
 # URL to the data source:
 url = {
-    'ksat_aq': 'https://borealisdata.ca/dataset.xhtml?persistentId=doi:10.5683/SP2/DLGXYO',
+    'ksat_aq': 'https://borealisdata.ca/dataset.xhtml?persistentId=doi:10.5683/SP2/TTJNIU',
     'wte': 'https://zenodo.org/record/1315471/files/GMD-data.tar.gz?download=1'}
 
 # Define directories:
