@@ -277,7 +277,7 @@ class script_timer:
         time_str = f"{str(int(hours)).zfill(2)}:{str(int(minutes)).zfill(2)}:{str(int(seconds)).zfill(2)}"
         # Print the runtime:
         print(colored(f"\nTOTAL RUNTIME ▶   {time_str}", 'cyan', attrs=['bold']))
-        print('==========================================================================================')
+        print(colored('==========================================================================================', 'cyan'))
 
 # ------------------------------------------------------------------------------------------------
 # Data download functions:
