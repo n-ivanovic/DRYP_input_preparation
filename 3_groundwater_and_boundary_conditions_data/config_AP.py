@@ -20,8 +20,8 @@ url = {
 dir = {
     'input_ksat_aq': '/home/ivanovn/ws_local/download/GLHYMPS_V2.0', 
     'input_wte': '/home/ivanovn/ws_local/download/G3M_V1.0', 
-    'input_sy': '/home/ivanovn/ws_local/temp/DRYP_input', 
-    'output': '/home/ivanovn/ws_local/temp/DRYP_input'}
+    'input_sy': '/home/ivanovn/ws_local/temp/input', 
+    'output': '/home/ivanovn/ws_local/temp/input'}
 dir['temp'] = os.path.join(dir['output'], 'temp')
 # Check if the temp directory exists, if not, create it:
 if not os.path.isdir(dir['temp']):

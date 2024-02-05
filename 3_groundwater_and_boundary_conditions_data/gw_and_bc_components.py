@@ -517,10 +517,10 @@ def reproject_data(data, metadata):
         # Calculate the new affine transform:
         new_transform = Affine(resolution, 
                                transform[1], 
-                               0, 
+                               transform[2], 
                                transform[3], 
-                               resolution, 
-                               0)
+                               -resolution, 
+                               transform[5])
         # Create a new metadata dictionary:
         resampled_metadata = metadata.copy()
         resampled_metadata.update({'height': resampled_data.shape[0], 

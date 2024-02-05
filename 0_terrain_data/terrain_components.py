@@ -693,10 +693,10 @@ def generic_reproject(data, metadata, labels, temp_path, output_path):
         # Calculate the new affine transform:
         new_transform = Affine(resolution, 
                                transform[1], 
-                               0, 
+                               transform[2], 
                                transform[3], 
-                               resolution, 
-                               0)
+                               -resolution, 
+                               transform[5])
         # Create a new metadata dictionary:
         resampled_metadata = metadata.copy()
         resampled_metadata.update({'height': resampled_data.shape[0], 
@@ -855,17 +855,19 @@ def invert_upstream(res_merged_upstream, res_metadata, temp_path):
 
     # Invert the resampled merged upstream data:
     with timer('Inverting the upstream data...'):
-        pseudo_elevation = np.max(res_merged_upstream) - res_merged_upstream
+        p_elev = np.max(res_merged_upstream) - res_merged_upstream
+        # Normalize the data to the 1-99 percentile range and rescale it to 0-1:
+        p_elev = (p_elev - np.percentile(p_elev, 1)) / (np.percentile(p_elev, 99) - np.percentile(p_elev, 1))
         print(colored(' ✔ Done!', 'green'))
     # Plot the resampled inverted upstream data:
     if intermediate_step:
-        plot_data(pseudo_elevation, res_metadata, temp_path, 
+        plot_data(p_elev, res_metadata, temp_path, 
                   data_name='pseudo_elevation', title='Pseudo elevation', 
                   cbar_label='Upstream cells', cmap='cubehelix', inverse=True)
     print(colored('==========================================================================================', 'blue'))
 
     # Return the pseudo elevation:
-    return pseudo_elevation
+    return p_elev
 
 
 # Define a function to compute the flow direction and accumulation:
@@ -914,12 +916,13 @@ def flow_accumulation(pseudo_elevation, res_metadata, temp_path, output_path):
         flow_direction = grid.at_node['flow__receiver_node']
         flow_accumulation = grid.at_node['drainage_area']
         # Reshape the flow direction and accumulation data:
-        flow_direction_2D = flow_direction.reshape((nrows, ncols)).astype(np.int32)
+        flow_direction_2D = np.flip(flow_direction.reshape((nrows, ncols)), 0).astype(np.int32)
         flow_accumulation_2D = flow_accumulation.reshape((nrows, ncols)).astype(np.float32)
-        print(colored(' ✔ Done!', 'green'))
+        print(colored(' ✔ Done!', 'green'))    
     # Save the flow direction:
     save_data(flow_direction_2D, res_metadata, output_path, 
               data_name='flow_direction')
+    # Use landlab 
     # Plot the flow accumulation:
     if intermediate_step:
         plot_data(flow_accumulation_2D, res_metadata, temp_path, 
@@ -929,6 +932,54 @@ def flow_accumulation(pseudo_elevation, res_metadata, temp_path, output_path):
 
     # Return the flow direction and accumulation maps:
     return flow_direction_2D, flow_accumulation_2D
+
+
+# Calculate the inferred flow directions (D8) from the flow accumulation:
+def infer_fd_d8_from_accumulation(flow_accumulation_array, res_metadata, temp_path):
+
+    """
+    Infer the flow directions from the flow accumulation map, using the D8 method.
+    CURRENTLY NOT USED/NEEDED.
+
+    Parameters:
+    ----------
+    flow_accumulation_array : numpy array
+        Flow accumulation map.
+    res_metadata : dict
+        Dictionary containing the metadata of the resampled merged DEM.
+    temp_path : str
+        The path to the temporary directory.
+    
+    Returns:
+    -------
+    fd_d8 : numpy array
+        Inferred flow directions.
+    """
+    # Get the intermediate step settings:
+    intermediate_step = config.intermediate_step['plot']
+
+    # Get the number of rows and columns:
+    nrows, ncols = flow_accumulation_array.shape
+    # Initialize an array to store the inferred flow directions:
+    fd_d8 = np.zeros_like(flow_accumulation_array, dtype=float)
+    # Loop through each cell in the flow accumulation array:
+    for r in range(1, nrows - 1):
+        for c in range(1, ncols - 1):
+            # Extract the 3x3 neighborhood of the current cell:
+            neighborhood = flow_accumulation_array[r-1:r+2, c-1:c+2]
+            # Calculate the differences between the center cell and its neighbors:
+            diffs = neighborhood - neighborhood[1, 1]
+            # Set the flow direction to the direction of the steepest increase in accumulation:
+            steepest_increase_direction = np.argmax(diffs)
+            fd_d8[r, c] = steepest_increase_direction
+    # Plot the inferred flow directions:
+    if intermediate_step:
+        plot_data(fd_d8, res_metadata, temp_path, 
+                  data_name='inferred_flow_directions', title='Inferred flow directions', 
+                  cbar_label='Direction', cmap='cubehelix')
+    
+    # Return the inferred flow directions:
+    return fd_d8
 
 
 # Define a function to extract the river network:
@@ -1487,6 +1538,8 @@ cell_area = cell_factor_area(res_merged_dem, res_metadata, temp_dir, output_dir)
 inv_res_ups = invert_upstream(res_merged_ups, res_metadata, temp_dir)
 # Compute flow direction and flow accumulation:
 flow_dir, flow_acc = flow_accumulation(inv_res_ups, res_metadata, temp_dir, output_dir)
+# # Call the function to infer flow directions from the flow : (NOT IN USE)
+# inferred_fd_d8 = infer_fd_d8_from_accumulation(flow_acc, resaccumulation_metadata, temp_dir)
 # Extract river network based on the speficied areal coverage threshold:
 riv_net = river_network(flow_acc, cell_area, res_metadata, temp_dir)
 # Compute constant head boundary conditions (CHB):
