@@ -856,8 +856,8 @@ def invert_upstream(res_merged_upstream, res_metadata, temp_path):
     # Invert the resampled merged upstream data:
     with timer('Inverting the upstream data...'):
         p_elev = np.max(res_merged_upstream) - res_merged_upstream
-        # Normalize the data to the 1-99 percentile range and rescale it to 0-1:
-        p_elev = (p_elev - np.percentile(p_elev, 1)) / (np.percentile(p_elev, 99) - np.percentile(p_elev, 1))
+        # Normalize the data to the range [0, 1]:
+        p_elev = (p_elev - np.min(p_elev)) / (np.max(p_elev) - np.min(p_elev))
         print(colored(' ✔ Done!', 'green'))
     # Plot the resampled inverted upstream data:
     if intermediate_step:
