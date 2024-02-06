@@ -935,7 +935,7 @@ def flow_accumulation(pseudo_elevation, res_metadata, temp_path, output_path):
 
 
 # Calculate the inferred flow directions (D8) from the flow accumulation:
-def infer_fd_d8_from_accumulation(flow_accumulation_array, res_metadata, temp_path):
+def infer_fd_from_accumulation(flow_accumulation_array, res_metadata, temp_path):
 
     """
     Infer the flow directions from the flow accumulation map, using the D8 method.
@@ -961,7 +961,7 @@ def infer_fd_d8_from_accumulation(flow_accumulation_array, res_metadata, temp_pa
     # Get the number of rows and columns:
     nrows, ncols = flow_accumulation_array.shape
     # Initialize an array to store the inferred flow directions:
-    fd_d8 = np.zeros_like(flow_accumulation_array, dtype=float)
+    fd = np.zeros_like(flow_accumulation_array, dtype=float)
     # Loop through each cell in the flow accumulation array:
     for r in range(1, nrows - 1):
         for c in range(1, ncols - 1):
@@ -971,15 +971,15 @@ def infer_fd_d8_from_accumulation(flow_accumulation_array, res_metadata, temp_pa
             diffs = neighborhood - neighborhood[1, 1]
             # Set the flow direction to the direction of the steepest increase in accumulation:
             steepest_increase_direction = np.argmax(diffs)
-            fd_d8[r, c] = steepest_increase_direction
+            fd[r, c] = steepest_increase_direction
     # Plot the inferred flow directions:
     if intermediate_step:
-        plot_data(fd_d8, res_metadata, temp_path, 
-                  data_name='inferred_flow_directions', title='Inferred flow directions', 
+        plot_data(fd, res_metadata, temp_path, 
+                  data_name='inferred_fd', title='Inferred flow directions', 
                   cbar_label='Direction', cmap='cubehelix')
     
     # Return the inferred flow directions:
-    return fd_d8
+    return fd
 
 
 # Define a function to extract the river network:
@@ -1539,7 +1539,7 @@ inv_res_ups = invert_upstream(res_merged_ups, res_metadata, temp_dir)
 # Compute flow direction and flow accumulation:
 flow_dir, flow_acc = flow_accumulation(inv_res_ups, res_metadata, temp_dir, output_dir)
 # # Call the function to infer flow directions from the flow : (NOT IN USE)
-# inferred_fd_d8 = infer_fd_d8_from_accumulation(flow_acc, resaccumulation_metadata, temp_dir)
+# inferred_fd = infer_fd_from_accumulation(flow_acc, resaccumulation_metadata, temp_dir)
 # Extract river network based on the speficied areal coverage threshold:
 riv_net = river_network(flow_acc, cell_area, res_metadata, temp_dir)
 # Compute constant head boundary conditions (CHB):
