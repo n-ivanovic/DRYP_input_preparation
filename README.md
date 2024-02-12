@@ -62,7 +62,7 @@ Contributions to this dataset are welcome! If you have updated information, corr
 
 ## 📜 License
 
-This dataset is provided under CC0-1.0 license. Please refer to the [LICENSE](https://github.com/n-ivanovic/DRYP_input_preparation/blob/Main/LICENSE) file for more details.
+This dataset is provided under *MIT license*. Please refer to the [LICENSE](https://github.com/n-ivanovic/DRYP_input_preparation/blob/Main/LICENSE) file for more details.
 
 ## ✉️ Contact
 
