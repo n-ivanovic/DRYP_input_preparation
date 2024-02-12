@@ -20,7 +20,7 @@ url = {
 # Define directories:
 dir = {
     'input': '/home/ivanovn/ws_local/download/HiHydroSoil_v2.0',
-    'output': '/home/ivanovn/ws_local/temp/input'}
+    'output': '/home/ivanovn/ws_local/temp/DRYP_input'}
 dir['temp'] = os.path.join(dir['output'], 'temp')
 # Check if the temp directory exists, if not, create it:
 if not os.path.isdir(dir['temp']):
