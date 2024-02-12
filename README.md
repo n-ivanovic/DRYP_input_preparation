@@ -50,8 +50,6 @@ To run the code in this repository, you will need the following:
   pip install -r requirements.txt
   ```
 
-- Once the dependencies are installed, you can run the scripts located in the /code directory.
-
 ## 🤝 How to Contribute
 
 Contributions to this dataset are welcome! If you have updated information, corrections, or suggestions, please feel free to:
