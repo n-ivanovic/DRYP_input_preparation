@@ -5,7 +5,7 @@
 
 ## 📝 Overview
 
-This repository contains the code and instructions for preparing the input data for the *Parsimonious Dryland Water Partition* model - [**`DRYP`**](https://github.com/n-ivanovic/DRYP). The DRYP model is a hydrological model that simulates the water balance of a catchment, including the processes of precipitation, evapotranspiration, runoff, and groundwater flow. The model requires a range of input data, including terrain, surface, soil, and subsurface data, as well as groundwater and boundary conditions.
+This repository contains the code and instructions for preparing the input data for the *Parsimonious Dryland Water Partition* model - [**`DRYP`**](https://github.com/AndresQuichimbo/DRYP). The DRYP model is a hydrological model that simulates the water balance of a catchment, including the processes of precipitation, evapotranspiration, runoff, and groundwater flow. The model requires a range of input data, including terrain, surface, soil, and subsurface data, as well as groundwater and boundary conditions.
 
 ## 📁 Repository Structure
 
