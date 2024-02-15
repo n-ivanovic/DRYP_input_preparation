@@ -1,4 +1,3 @@
-# The list of python modules used in the terrain data preparation:
 tqdm
 numpy
 scipy
