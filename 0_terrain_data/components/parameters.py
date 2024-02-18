@@ -151,7 +151,6 @@ def flow_accumulation(pseudo_elevation, res_metadata, temp_path, output_path):
     # Save the flow direction:
     save_data(flow_direction_2D, res_metadata, output_path, 
               data_name='flow_direction')
-    # Use landlab 
     # Plot the flow accumulation:
     if intermediate_step:
         plot_data(flow_accumulation_2D, res_metadata, temp_path, 
