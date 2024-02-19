@@ -57,7 +57,7 @@ def cell_factor_area(res_merged_dem, res_metadata, output_path):
 
 
 # Define a function to invert the resampled merged upstream data:
-def invert_upstream(res_merged_upstream, res_metadata, temp_path):
+def invert_upstream(res_merged_upstream, res_metadata, temp_path, output_path):
 
     """
     Invert the resampled merged upstream data to create the pseudo elevation map. 
@@ -72,6 +72,8 @@ def invert_upstream(res_merged_upstream, res_metadata, temp_path):
         Dictionary containing the metadata of the resampled data.
     temp_path : str
         The path to the temporary directory.
+    output_path : str
+        The path to the output directory.
     
     Returns:
     -------
@@ -88,6 +90,9 @@ def invert_upstream(res_merged_upstream, res_metadata, temp_path):
         # Normalize the data to the range [0, 1]:
         p_elev = (p_elev - np.min(p_elev)) / (np.max(p_elev) - np.min(p_elev))
         print(colored(' ✔ Done!', 'green'))
+    # Save the pseudo elevation:
+    save_data(p_elev, res_metadata, output_path,
+              data_name='pseudo_elevation')
     # Plot the resampled inverted upstream data:
     if intermediate_step:
         plot_data(p_elev, res_metadata, temp_path, 

@@ -113,7 +113,7 @@ res_merged_dem, res_merged_ups, res_metadata = resample_data(merged_dem, merged_
 # Create cell factor area:
 cell_area = cell_factor_area(res_merged_dem, res_metadata, output_dir)
 # Invert merged upstream data:
-inv_res_ups = invert_upstream(res_merged_ups, res_metadata, temp_dir)
+inv_res_ups = invert_upstream(res_merged_ups, res_metadata, temp_dir, output_dir)
 # Compute flow direction and flow accumulation:
 flow_dir, flow_acc = flow_accumulation(inv_res_ups, res_metadata, temp_dir, output_dir)
 # Extract river network based on the speficied areal coverage threshold:
