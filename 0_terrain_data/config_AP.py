@@ -45,16 +45,9 @@ polygon = {
                (54.5, 26), (56, 26.5), (56.5, 26.5), (57.5, 25), (59, 24.5), (61, 23), (61, 22), (59, 19), 
                (57, 17), (50.5, 13.5), (44, 11.5), (43.5, 12.5), (42, 14), (34.5, 27.5), (33.5, 28), (32.5, 29.5)]}
 
-# Define the flow direction method:
-dirmap = {
-    'D8': (64, 128, 1, 2, 4, 8, 16, 32)}
-
 # Define the output CRS:
 reproject = {
-    # Lambert Aramco - EPSG:2318
-    'crs_local': 'EPSG:2318', 
-    # Cylindrical Equal Area - EPSG:6933
-    'crs_global': 'EPSG:6933'}
+    'crs': 'EPSG:6933'}     # Cylindrical Equal Area - EPSG:6933
 
 # Define the output resolution for projected coordinate system (meters):
 resolution = {

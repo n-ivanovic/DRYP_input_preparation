@@ -43,7 +43,7 @@ def generic_reproject(data, metadata, labels, temp_path, output_path):
     """
 
     # Get the CRS settings:
-    crs = config.reproject['crs_global']
+    crs = config.reproject['crs']
     # Get the resolution settings:
     resolution = config.resolution['output']
     # Get the intermediate step settings:
