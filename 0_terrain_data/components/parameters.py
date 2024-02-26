@@ -150,7 +150,7 @@ def flow_accumulation(pseudo_elevation, res_metadata, temp_path, output_path):
         flow_direction = grid.at_node['flow__receiver_node']
         flow_accumulation = grid.at_node['drainage_area']
         # Reshape the flow direction and accumulation data:
-        flow_direction_2D = np.flip(flow_direction.reshape((nrows, ncols)), 0).astype(np.int32)
+        flow_direction_2D = flow_direction.reshape((nrows, ncols)).astype(np.int32)
         flow_accumulation_2D = flow_accumulation.reshape((nrows, ncols)).astype(np.float32)
         print(colored(' ✔ Done!', 'green'))    
     # Save the flow direction:
