@@ -1,15 +1,17 @@
 # Import modules:
 import numpy as np
+import geopandas as gpd
 from termcolor import colored
-from components.timing import timer
+from pyproj import Transformer
+from rasterio.warp import transform_geom
+from rasterio.features import geometry_mask
+from shapely.geometry import Polygon, mapping
 from landlab import RasterModelGrid
-from shapely.geometry import Polygon
+from landlab.components import FlowAccumulator
+from components.timing import timer
 from components.saving import save_data
 from components.plotting import plot_data
 from components.configuration import config
-from rasterio.features import geometry_mask
-from landlab.components import FlowAccumulator
-from components.reprojecting import generic_reproject
 
 
 # ------------------------------------------------------------------------------------------------
@@ -266,19 +268,19 @@ def boundary_conditions(river_network, res_merged_dem, res_metadata, temp_path, 
     return chb
 
 
-# Define a function to create research area terrain mask:
-def terrain_mask(merged_dem, metadata, temp_path, output_path):
+# Define a function to create research area domain mask:
+def domain_mask(resampled_merged_dem, resampled_metadata, temp_path, output_path):
 
     """
-    Create a terrain mask to differentiate land mass (elevation >= 0) from the sea (elevation <= 0), and
+    Create a domain mask to differentiate land mass (elevation >= 0) from the sea (elevation <= 0), and
     to limit the research area to the specified bounds in the configuration file.
 
     Parameters:
     ----------
-    merged_dem : numpy array
-        The merged DEM data.
-    metadata : dict
-        Dictionary containing the metadata of the data.
+    resampled_merged_dem : numpy array
+        The resampled merged DEM data.
+    resampled_metadata : dict
+        Dictionary containing the metadata of the resampled data.
     temp_path : str
         The path to the temporary directory.
     output_path : str
@@ -286,43 +288,57 @@ def terrain_mask(merged_dem, metadata, temp_path, output_path):
 
     Returns:
     -------
-    terrain_mask : numpy array
-        Terrain mask with 1s for land, and 0s for sea.
+    domain_mask : numpy array
+        Domain mask with 1s for land, and 0s for sea.
     """
 
-    # Get the terrain mask polygon bounds:
+    # Get the domain mask polygon bounds:
     polygon = config.polygon['bounds']
+    # Get the intermediate step settings:
+    intermediate_step = config.intermediate_step['plot']
 
-    # Create a research area mask:
-    with timer('Creating a terrain mask...'):
-        # Define the data labels:
-        labels = {
-            'method': 'mean',
-            'data_name': 'terrain_mask',
-            'title': 'Terrain mask',
-            'cbar_label': 'Terrain shape',
-            'cmap': 'binary',
-            'log_scale': False,
-            'inverse': False,
-            'binary': True,
-            'save': True}
+    # Create the domain mask:
+    with timer('Creating the domain mask...'):
         # Divide the land mass from the sea (elevation >= 0):
-        dem_mask = np.where(merged_dem > 0, 1, 0).astype(np.int32)
-        # Create a polygon from the bounds:
-        bounds = Polygon(polygon)
-        # Create a mask from the polygon:
-        mask = geometry_mask([bounds], out_shape=dem_mask.shape, transform=metadata['transform'], invert=True)
-        # Apply the mask:
+        dem_mask = np.where(resampled_merged_dem > 0, 1, 0).astype(np.int32)
+        # If polygon bounds is a list of coordinates:
+        if isinstance(polygon, list):
+            print(' The polygon bounds are a list of coordinates.')
+            # Initialize the transformer to convert from EPSG:4326:
+            transformer = Transformer.from_crs("EPSG:4326", resampled_metadata['crs'], always_xy=True)
+            # Reproject the polygon bounds to the DEM's CRS:
+            transformed_coords = [transformer.transform(x, y) for x, y in polygon]
+            # Create a polygon from the bounds:
+            bounds = Polygon(transformed_coords)
+            # Create a mask from the polygon:
+            mask = geometry_mask([bounds], out_shape=dem_mask.shape, transform=resampled_metadata['transform'], invert=True)
+        # If polygon bounds is a shapefile:
+        elif isinstance(polygon, str):
+            print(' The polygon bounds are a shapefile.')
+            # Read the shapefile:
+            gdf = gpd.read_file(polygon)
+            # Reproject the shapefile to the DEM's CRS:
+            gdf = gdf.to_crs(resampled_metadata['crs'])
+            # Get the shapefile's unified geometry:
+            bounds = gdf.unary_union
+            # Create a mask from the unified geometry:
+            mask = geometry_mask([bounds], out_shape=dem_mask.shape, transform=resampled_metadata['transform'], invert=True)
+        # If polygon bounds is neither a list of coordinates nor a shapefile:
+        else:
+            raise ValueError('The polygon bounds must be a list of coordinates or a shapefile!')
+        # Apply the mask to differentiate the research area:
         dem_mask = np.where(mask == 1, dem_mask, 0)
-        # Resample the terrain mask:
-        terrain_mask, _ = generic_reproject(dem_mask, metadata, labels, temp_path, output_path)
-        # Convert the reprojected resampled terrain mask values to 1s and 0s:
-        terrain_mask = np.where(terrain_mask > 0, 1, 0).astype(np.int32)
         print(colored(' ✔ Done!', 'green'))
+    # Save the domain mask:
+    save_data(dem_mask, resampled_metadata, output_path, data_name='domain_mask')
+    # Plot the domain mask:
+    if intermediate_step:
+        plot_data(dem_mask, resampled_metadata, temp_path, data_name='domain_mask', 
+                  title='Domain mask', cbar_label='Domain shape', cmap='binary', binary=True)
     print(colored('==========================================================================================', 'blue'))
 
-    # Return the terrain mask:
-    return terrain_mask
+    # Return the domain mask:
+    return domain_mask
 
 
 # Define a function to compute river lengths:

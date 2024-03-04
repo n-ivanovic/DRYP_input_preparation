@@ -56,7 +56,7 @@ from components.gathering import get_data
 from components.merging import merge_data
 from components.reprojecting import resample_data
 from components.parameters import (cell_factor_area, invert_upstream, flow_accumulation,
-                                   river_network, boundary_conditions, terrain_mask, river_lengths)
+                                   river_network, boundary_conditions, domain_mask, river_lengths)
 
 ##################################################################################################
 # Script timer:
@@ -120,8 +120,8 @@ flow_dir, flow_acc = flow_accumulation(inv_res_ups, res_metadata, temp_dir, outp
 riv_net = river_network(flow_acc, cell_area, res_metadata, temp_dir)
 # Compute constant head boundary conditions (CHB):
 chb = boundary_conditions(riv_net, res_merged_dem, res_metadata, temp_dir, output_dir)
-# Create research area terrain mask:
-terr_mask = terrain_mask(merged_dem, metadata, temp_dir, output_dir)
+# Create research area domain mask:
+dom_mask = domain_mask(res_merged_dem, res_metadata, temp_dir, output_dir)
 # Compute river lengths:
 riv_len = river_lengths(riv_net, res_metadata, temp_dir, output_dir)
  

@@ -8,5 +8,6 @@ shapely
 rasterio
 requests
 termcolor
+geopandas
 matplotlib
 beautifulsoup4
