@@ -3,9 +3,8 @@ import numpy as np
 import geopandas as gpd
 from termcolor import colored
 from pyproj import Transformer
-from rasterio.warp import transform_geom
 from rasterio.features import geometry_mask
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import Polygon
 from landlab import RasterModelGrid
 from landlab.components import FlowAccumulator
 from components.timing import timer
