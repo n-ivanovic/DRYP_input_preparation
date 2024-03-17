@@ -6,6 +6,7 @@ from pyproj import Transformer
 from rasterio.features import geometry_mask
 from shapely.geometry import Polygon
 from landlab import RasterModelGrid
+from landlab.core.utils import as_id_array
 from landlab.components import FlowAccumulator
 from components.timing import timer
 from components.saving import save_data
@@ -109,9 +110,13 @@ def invert_upstream(res_merged_upstream, res_metadata, temp_path, output_path):
 def flow_accumulation(pseudo_elevation, res_metadata, temp_path, output_path):
 
     """
-    Compute a flow direction map from the pseudo elevation map, using the D8 method. The 
-    flow direction map is used to compute the flow accumulation map, which is afterwards
+    Compute a flow direction map from the flipped pseudo elevation map, using the D8 method. 
+    The flow direction map is used to compute the flow accumulation map, which is afterwards
     used to extract the river network.
+
+    Besides the flow direction, the flow accumulation map is also computed and saved. The flow
+    accumulation map is used to extract the river network, which are in turn used to compute the
+    constant head boundary conditions and the river lengths.
 
     Parameters:
     ----------
@@ -141,7 +146,7 @@ def flow_accumulation(pseudo_elevation, res_metadata, temp_path, output_path):
         nrows, ncols = pseudo_elevation.shape
         grid = RasterModelGrid((nrows, ncols))
         # Cast the pseudo_elevation to float64:
-        pseudo_elevation = pseudo_elevation.astype(np.float64)
+        pseudo_elevation = np.flip(pseudo_elevation, 0).astype(np.float64)
         # Add the elevation data to the grid:
         grid.add_field('topographic__elevation', pseudo_elevation, at='node', clobber=True)
         # Initialize and run the FlowAccumulator component:
@@ -152,20 +157,24 @@ def flow_accumulation(pseudo_elevation, res_metadata, temp_path, output_path):
         flow_accumulation = grid.at_node['drainage_area']
         # Reshape the flow direction and accumulation data:
         flow_direction_2D = np.flip(flow_direction.reshape((nrows, ncols)), 0).astype(np.int32)
-        flow_accumulation_2D = flow_accumulation.reshape((nrows, ncols)).astype(np.float32)
+        flow_accumulation_2D = np.flip(flow_accumulation.reshape((nrows, ncols)), 0).astype(np.float32)
+        # Use the provided receiver node IDs to set the flow direction:
+        r = as_id_array(np.diff(flow_direction_2D)).astype(np.int32)
         print(colored(' ✔ Done!', 'green'))    
     # Save the flow direction:
     save_data(flow_direction_2D, res_metadata, output_path, 
-              data_name='flow_direction')
+              data_name='flow_r_nodes')
+    # Plot the flow direction:
+    if intermediate_step:
+        plot_data(r, res_metadata, temp_path, 
+                  data_name='flow_r_nodes', title='Landlanb flow receiver nodes', 
+                  cbar_label='Node IDs', cmap='cubehelix')
     # Plot the flow accumulation:
     if intermediate_step:
         plot_data(flow_accumulation_2D, res_metadata, temp_path, 
                   data_name='flow_accumulation', title='Flow accumulation', 
                   cbar_label='Upstream cells', cmap='cubehelix', log_scale=True)
     print(colored('==========================================================================================', 'blue'))
-
-    # Return the flow direction and accumulation maps:
-    return flow_direction_2D, flow_accumulation_2D
 
 
 # Define a function to extract the river network:
@@ -329,11 +338,13 @@ def domain_mask(resampled_merged_dem, resampled_metadata, temp_path, output_path
         dem_mask = np.where(mask == 1, dem_mask, 0)
         print(colored(' ✔ Done!', 'green'))
     # Save the domain mask:
-    save_data(dem_mask, resampled_metadata, output_path, data_name='domain_mask')
+    save_data(dem_mask, resampled_metadata, output_path, 
+              data_name='domain_mask')
     # Plot the domain mask:
     if intermediate_step:
-        plot_data(dem_mask, resampled_metadata, temp_path, data_name='domain_mask', 
-                  title='Domain mask', cbar_label='Domain shape', cmap='binary', binary=True)
+        plot_data(dem_mask, resampled_metadata, temp_path, 
+                  data_name='domain_mask', title='Domain mask', 
+                  cbar_label='Domain shape', cmap='binary', binary=True)
     print(colored('==========================================================================================', 'blue'))
 
     # Return the domain mask:
